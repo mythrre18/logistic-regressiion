@@ -1,0 +1,116 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV, cross_val_score
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+
+# Load dataset
+data = pd.read_csv("data (1).csv")
+data = data.drop(columns=["id", "Unnamed: 32"], errors='ignore')
+
+data['diagnosis'] = LabelEncoder().fit_transform(data['diagnosis'])
+
+X = data.drop(columns=['diagnosis'])  
+y = data['diagnosis']
+
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+# Feature Scaling
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Stratified K-Fold for cross-validation
+cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+
+# Models with Cross-Validation
+models = {
+    "Logistic Regression": LogisticRegression(max_iter=5000, solver='liblinear'),
+    "SVM": SVC(probability=True),
+    "Decision Tree": DecisionTreeClassifier(),
+    "Random Forest": RandomForestClassifier(),
+    "Naive Bayes": GaussianNB()
+}
+
+# Hyperparameter Grids
+param_grids = {
+    "Logistic Regression": {"C": [0.01, 0.1, 1, 10, 100], "penalty": ['l1', 'l2']},
+    "SVM": {"C": [0.1, 1, 10], "kernel": ['linear', 'rbf']},
+    "Decision Tree": {"max_depth": [3, 5, 10, None], "criterion": ['gini', 'entropy']},
+    "Random Forest": {"n_estimators": [50, 100], "max_depth": [5, 10, None]}
+}
+
+results = {}
+for name, model in models.items():
+    print(f"\n🔍 Training {name} (With CV)...")
+    if name in param_grids:
+        grid_search = GridSearchCV(model, param_grids[name], cv=5, scoring='accuracy', n_jobs=-1)
+        grid_search.fit(X_train_scaled, y_train)
+        best_model = grid_search.best_estimator_
+        print(f"   Best Params: {grid_search.best_params_}")
+    else:
+        best_model = model.fit(X_train_scaled, y_train)
+
+    cv_scores = cross_val_score(best_model, X_train_scaled, y_train, cv=cv, scoring='accuracy')
+
+    y_pred = best_model.predict(X_test_scaled)
+    cm = confusion_matrix(y_test, y_pred)
+    
+    results[name] = {
+        "Accuracy": accuracy_score(y_test, y_pred),
+        "Precision": precision_score(y_test, y_pred),
+        "Recall": recall_score(y_test, y_pred),
+        "F1-Score": f1_score(y_test, y_pred),
+        "Confusion Matrix": cm
+    }
+
+# Logistic Regression Without Cross-Validation
+log_reg_no_cv = LogisticRegression(max_iter=5000)
+log_reg_no_cv.fit(X_train_scaled, y_train)
+y_pred_no_cv = log_reg_no_cv.predict(X_test_scaled)
+cm_no_cv = confusion_matrix(y_test, y_pred_no_cv)
+
+results["Logistic Regression (No CV)"] = {
+    "Accuracy": accuracy_score(y_test, y_pred_no_cv),
+    "Precision": precision_score(y_test, y_pred_no_cv),
+    "Recall": recall_score(y_test, y_pred_no_cv),
+    "F1-Score": f1_score(y_test, y_pred_no_cv),
+    "Confusion Matrix": cm_no_cv
+}
+
+# Display Results
+print("\n📊 Final Model Performance (With Cross-Validation):\n")
+for model, metrics in results.items():
+    print(f"\n🚀 {model}:")
+    for metric, value in metrics.items():
+        if metric != "Confusion Matrix":
+            print(f"   {metric}: {value:.4f}")
+
+# Plot Confusion Matrices
+for model, metrics in results.items():
+    plt.figure(figsize=(5, 4))
+    sns.heatmap(metrics["Confusion Matrix"], annot=True, fmt='d', cmap='Blues', xticklabels=["Benign", "Malignant"], yticklabels=["Benign", "Malignant"])
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.title(f"Confusion Matrix - {model}")
+    plt.show()
+
+# Feature Importance for Tree-based Models
+for model_name in ["Decision Tree", "Random Forest"]:
+    if model_name in results:
+        model = models[model_name].fit(X_train_scaled, y_train)
+        feature_importance = pd.Series(model.feature_importances_, index=X.columns).sort_values(ascending=False)
+        plt.figure(figsize=(10, 5))
+        sns.barplot(x=feature_importance.index, y=feature_importance.values, palette="viridis")
+        plt.xticks(rotation=45, ha="right")
+        plt.title(f"Feature Importance ({model_name})")
+        plt.ylabel("Importance")
+        plt.show()
