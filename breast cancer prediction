@@ -87,9 +87,9 @@ results["Logistic Regression (No CV)"] = {
 }
 
 # Display Results
-print("\n📊 Final Model Performance (With Cross-Validation):\n")
+print(" Final Model Performance (With Cross-Validation):\n")
 for model, metrics in results.items():
-    print(f"\n🚀 {model}:")
+    print(f" {model}:")
     for metric, value in metrics.items():
         if metric != "Confusion Matrix":
             print(f"   {metric}: {value:.4f}")
